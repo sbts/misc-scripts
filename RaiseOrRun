@@ -1,0 +1,31 @@
+#!/bin/bash
+
+
+Name="$1"
+Bin="$1"
+shift
+
+if [[ $Name == "thunderbird" ]]; then Name="Thunderbird"; fi
+if [[ $Name == "compose-mail" ]]; then Name="Thunderbird Compose"; Bin="thunderbird -compose"; fi
+
+Id=`xwininfo -name "$Name" 2> /dev/null | awk '/Window id:/ { print $4 }'`
+
+echo $Id
+
+RAISE() {
+    echo "FIXME: need to write raise code still."
+    echo "       at least a popup error message."
+    xmessage -center -default "okay" "$Name is already running, please raise it manually"
+}
+
+[ ! -z $Id ] && { 
+        echo "$Bin already running as $Id raising it now";
+        RAISE;
+    } || {
+        echo "$Bin not running. Starting it now....";
+        "$Bin" "$@" &
+}
+
+
+#  xprop
+#  xwininfo
