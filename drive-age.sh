@@ -42,7 +42,7 @@ Init() {
 
 Scan() {
     echo -n 'Scanning drives '
-    for Dev in /dev/sd?? ; do
+    for Dev in /dev/sd* ; do
         [[ ${Dev: -1} =~ [0-9] ]] && continue; # if the last char is a number then it's a partition not a device so skip it 
         local Id='' Name='' Flags='' Value='' Worst='' Thresh='' Fail='' Raw='' J1='' J2='' J3='';
         Device[$Idx]="$Dev"
