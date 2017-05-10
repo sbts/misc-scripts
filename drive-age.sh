@@ -23,6 +23,7 @@ Init() {
     declare -g -a Model;
     declare -g -a Serial;
     declare -g -a Hours;
+    declare -g -a LogHours;
     declare -g -a Temperature;
     declare -g -a TemperatureUnit;
 
@@ -42,20 +43,32 @@ Init() {
 Scan() {
     echo -n 'Scanning drives '
     for Dev in /dev/sd? ; do
-        local Id='' Name='' Flags='' Value='' Worst='' Thresh='' Fail='' Raw='' J='';
+        local Id='' Name='' Flags='' Value='' Worst='' Thresh='' Fail='' Raw='' J1='' J2='' J3='';
         Device[$Idx]="$Dev"
         echo -n "."
-        while read -rst10 Id Name Flags Value Worst Thresh Fail Raw J; do
+        while read -rst10 Id Name Flags Value Worst Thresh Fail Raw J1 J2 J3; do
             [[ "$Id" == 'Device' ]] && [[ "$Name" == 'Model:' ]]  && {
-                Model[$Idx]="${Flags} ${Value} ${Worst} ${Thresh} ${Fail} ${Raw} ${J}";
+                Model[$Idx]="${Flags} ${Value} ${Worst} ${Thresh} ${Fail} ${Raw} ${J1} ${J2} ${J3}";
                 continue;
             }
             [[ "$Id" == 'Serial' ]] && [[ "$Name" == 'Number:' ]] && {
-                Serial[$Idx]="${Flags} ${Value} ${Worst} ${Thresh} ${Fail} ${Raw} ${J}";
+                Serial[$Idx]="${Flags} ${Value} ${Worst} ${Thresh} ${Fail} ${Raw} ${J1} ${J2} ${J3}";
                 continue;
             }
             [[ "$Name" == 'Power_On_Hours' ]] && {
                 Hours[$Idx]="$Raw";
+                continue;
+            }
+            [[ "$Name" == 'Power_On_Hours_and_Msec' ]] && {
+                Hours[$Idx]="${Raw%%h*}";
+                continue;
+            }
+            [[ "$Name" == 'Power-on' ]] && [[ "$Flags" == 'Hours' ]] && {
+                Hours[$Idx]="$Raw";
+                continue;
+            }
+            [[ "$Id" == '#' ]] && [[ "$Name" == '1' ]] && {
+                LogHours[$Idx]="$J2";
                 continue;
             }
             [[ "$Id" == 'Lifetime' ]] && [[ "$Name" == 'Min/Max' ]] && [[ "$Flags" == 'Temperature:' ]] && {
@@ -64,6 +77,15 @@ Scan() {
                 continue;
             }
         done < <( $SUDO $SMARTCTL -x $Dev)
+
+        [[ -z ${LogHours[$Idx]} ]]        && LogHours[$Idx]=0;
+        [[ -z ${Hours[$Idx]} ]]           && Hours[$Idx]=${LogHours[$Idx]}; # Fallback to the "logged" hours if it's available and Power_On_Hours etc are not
+
+        [[ -z ${Model[$Idx]} ]]           && Model[$Idx]='unknown';
+        [[ -z ${Serial[$Idx]} ]]          && Serial[$Idx]='unknown';
+        [[ -z ${Hours[$Idx]} ]]           && Hours[$Idx]=0;
+        [[ -z ${Temperature[$Idx]} ]]     && Temperature[$Idx]='unknown';
+        [[ -z ${TemperatureUnit[$Idx]} ]] && TemperatureUnit[$Idx]='unknown';
         (( Idx++ ));
     done
     eval declare -g -a Index=( {0..$(( ${#Device[@]} -1 ))} ); # this just sets a default index order
