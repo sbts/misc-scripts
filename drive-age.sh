@@ -28,13 +28,15 @@ Init() {
 
     declare -g SMARTCTL='/usr/sbin/smartctl'
     declare -g SUDO
-    [[ ! -u $SMARTCTL ]] && { # "no setUID so try using sudo"
-        read -rst5 SUDO < <( which sudo )
-        [[ -n
-        [[ -x "$SUDO" ]] && $SUDO -v -p 'Please enter your [sudo] password so we can run "smartctl -x": '
-        read -rst5 SMARTCTL < <( $SUDO which smartctl )
-        [[ ! -x $SMARTCTL ]] && { echo "We don't seem to be able to run 'smartctl' ($SMARTCTL)"; exit 9; }
-    }
+    if ! [[ $USER == 'root' ]]; then
+        [[ ! -u $SMARTCTL ]] && { # "no setUID so try using sudo"
+            read -rst5 SUDO < <( which sudo )
+            [[ -n "$SUDO" ]] && { echo "sudo not found. please run this script as root"; exit 9; }
+            [[ -x "$SUDO" ]] && $SUDO -v -p 'Please enter your [sudo] password so we can run "smartctl -x": '
+            read -rst5 SMARTCTL < <( $SUDO which smartctl )
+        }
+    fi
+    [[ ! -x $SMARTCTL ]] && { echo "We don't seem to be able to run 'smartctl' ($SMARTCTL)"; exit 9; }
 }
 
 Scan() {
