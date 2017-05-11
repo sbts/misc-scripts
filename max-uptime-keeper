@@ -1,0 +1,139 @@
+#!/bin/bash
+
+#DEBUG=true;
+#VERBOSE=true;
+
+###########################
+##
+##  Install this file as a cron job by running it as
+##  max-uptime -i | --install
+##
+###########################
+
+LogDir='/var/log/max-uptime-keeper';
+[[ -d "$LogDir" ]] || mkdir -p "$LogDir"; # create the dir if it's missing
+
+fCurrentUptime="$LogDir/uptime.current"
+fMaxUptime="$LogDir/uptime.max"
+fLogUptime="$LogDir/uptime.log"
+touch "$fCurrentUptime"
+touch "$fMaxUptime"
+touch "$fLogUptime"
+
+: ${DEBUG:=false};
+: ${VERBOSE:=false};
+
+ScriptName=`readlink -f "$0"`;
+User=$USER;
+
+UT=`uptime -p`
+read UTs J </proc/uptime
+
+InstallCronStub() {
+    if [[ $1 == '-i' ]] || [[ $1 == '--install' ]]; then
+        local _User=${2:-$User};
+        local _Group=$_User;
+        if [[ $_User == 'nobody' ]]; then _User='nogroup'; fi
+        sudo chown ${_User}:$_Group "$LogDir"     # make sure the installed user can write to the log dir
+        sudo chown ${_User}:$_Group "$ScriptName" # make sure the installed user can run the script
+        sudo chmod 755 "$ScriptName"              # make sure only the installed user can write to the script
+        # if any logfiles exist make sure the installed user owns them
+        [[ -f $fCurrentUptime ]] && sudo chown ${_User}:$_Group "$fCurrentUptime"
+        [[ -f $fMaxUptime ]]     && sudo chown ${_User}:$_Group "$fMaxUptime"
+        [[ -f $fLogUptime ]]     && sudo chown ${_User}:$_Group "$fLogUptime"
+        # if any logfiles exist make sure everyone can write to them
+        sudo chmod 777 "$LogDir"     # make sure everyone write to the log dir
+        [[ -f $fCurrentUptime ]] && sudo chmod 666 "$fCurrentUptime"
+        [[ -f $fMaxUptime ]]     && sudo chmod 666 "$fMaxUptime"
+        [[ -f $fLogUptime ]]     && sudo chmod 666 "$fLogUptime"
+        cat <<-EOF #| sudo tee /etc/cron.d/max-uptime-keeper >/dev/null
+		# update max-uptime records every minute
+		# m h dom mon dow user  command
+		  * *  *   *   *  $_User $ScriptName
+EOF
+    fi
+}
+
+ReadUptimeFiles() {
+    cUTs=0; cUT=0; mUTs=0; mUT=0; lUTs=0; lUT=0;
+    read cUTs cUT <"$fCurrentUptime"
+    read mUTs mUT <"$fMaxUptime"
+    while read LOG; do : ; done <"$fLogUptime";
+    : ${cUTs:=0}; : ${cUT:=0};
+    : ${mUTs:=0}; : ${mUT:=0};
+    : ${lUTs:=0}; : ${lUT:=0};
+}
+
+vecho() { # only outputs if VERBOSE is true
+    if $VERBOSE; then
+        echo "$@"
+    fi
+}
+
+PrintUptimes() {
+    if $DEBUG; then
+        echo -en "\n====================\n"
+        echo "Uptime     Now = $UTs : $UT";
+        echo "Uptime Current = $cUTs";
+        echo "Uptime     Max = $mUTs";
+        echo "Uptime     Log = $LOG";
+    fi
+}
+
+DumpFiles() {
+    if $DEBUG; then
+        echo -en "\n====================\nCurrent\n====================\n"
+        cat "$fCurrentUptime"
+        echo -en "\n====================\nMax\n====================\n"
+        cat "$fMaxUptime"
+        echo -en "\n====================\nLog\n====================\n"
+        cat "$fLogUptime"
+        echo
+        echo
+    fi
+}
+
+WriteUptimesToFile() {
+    if [[ $1 == $fCurrentUptime ]]; then # Replace Current Uptime
+        echo "$UTs : $UT" >"$fCurrentUptime";
+    elif [[ $1 == $fLogUptime ]]; then # Append to log
+        vecho "$ScriptName: Logging Uptime from Last Boot in $fLogUptime";
+        echo " : $cUTs $cUT" >>"$fLogUptime";
+        echo -n "Booted "`uptime -s` >>"$fLogUptime";
+    elif [[ $1 == $fMaxUptime ]]; then # Replace Max Uptime
+        vecho "$ScriptName: Recording New Max Uptime in $fMaxUptime";
+        echo "$cUTs $cUT" >"$fMaxUptime";
+    fi
+}
+
+UpdateUptimeFiles() {
+    #  if this is a low uptime write the old Uptime to the Log
+    if (( ${UTs%.*} < ${cUTs%.*} )); then # log at every boot
+        WriteUptimesToFile "$fLogUptime";
+
+        # if last is greater than the max uptime write to max uptime file
+        if (( ${cUTs%.*} > ${mUTs%.*} )); then
+            WriteUptimesToFile "$fMaxUptime";
+        fi
+    fi
+}
+
+if (( ${#@} >0 )); then InstallCronStub "$@"; fi
+
+ReadUptimeFiles
+#UTs=0; # Uncomment this line to force "new boot" behaviour
+
+if $DEBUG; then
+    PrintUptimes
+fi
+
+#  Store the current Uptime
+WriteUptimesToFile "$fCurrentUptime"
+
+UpdateUptimeFiles
+
+if $DEBUG; then
+    ReadUptimeFiles
+    PrintUptimes
+    DumpFiles
+fi
